@@ -75,7 +75,7 @@ ui <- fluidPage(
 
 server <- function(input, output) {
   
-  rv <- reactiveValues(armToPlot = "all",
+  rv <- reactiveValues(armToPlot = "awaitingInput",
                        armOrOverall = "Overall",
                        demType = NULL)
   armLabeler = as_labeller(c("ARM A" = "Drug X", 
@@ -90,7 +90,7 @@ server <- function(input, output) {
   observeEvent(input$demArm, { rv$armToPlot <- input$demArm })
   
   output$demArmOrOverall <- renderUI({
-    if(rv$armToPlot == "All"){
+    if(rv$armToPlot == "all"){
       radioButtons("armOrOverall", "Plot overall demographics or break down by study arm?",
                    choices = c("Overall", "By Arm"), selected = "Overall")
     }
@@ -110,30 +110,41 @@ server <- function(input, output) {
                          "ARM B" = "(Received placebo)",
                          "ARM C" = "(Received combination)")
       
-      if(armLabel == "(All participants)") {plotPatient <- patient} else {
+      if(rv$armToPlot == "all") {
+        plotPatient <- patient
+        } else {
         plotPatient <- patient[patient$arm == rv$armToPlot,]
       }
       if(rv$demType == 'age'){
-        
-        if(rv$armOrOverall == "Overall") {
+        if(rv$armToPlot == "all"){
+          if(rv$armOrOverall == "Overall") {
+            p <- ggplot(plotPatient, aes(x = age)) + xlim(10,80) + 
+              geom_histogram(binwidth = 5, color = "black", fill = "orange") +
+            labs(title = paste0("Participant age ", armLabel), 
+                                x = "Participant age", y = 'Number of individuals')
+            p
+          } else {
+            p <- ggplot(plotPatient, aes(x = age)) + xlim(10,80) +
+              geom_histogram(binwidth = 5, color = 'black', fill = 'orange') +
+              facet_grid(arm ~ ., labeller = armLabeler)  + 
+              labs(title = paste0("Participant age by treatment arm"), 
+              x = "Participant age", y = 'Number of individuals')
+            p
+          }
+        } else {
           p <- ggplot(plotPatient, aes(x = age)) + xlim(10,80) + 
             geom_histogram(binwidth = 5, color = "black", fill = "orange") +
-          labs(title = paste0("Participant age ", armLabel), 
-                              x = "Participant age", y = 'Number of individuals')
-        } else {
-          p <- ggplot(plotPatient, aes(x = age)) + xlim(10,80) +
-            geom_histogram(binwidth = 5, color = 'black', fill = 'orange') +
-            facet_grid(arm ~ ., labeller = armLabeler)  + 
-            labs(title = paste0("Participant age by treatment arm"), 
-            x = "Participant age", y = 'Number of individuals')
+            labs(title = paste0("Participant age ", armLabel), 
+                 x = "Participant age", y = 'Number of individuals')
+          p
         }
       }
       
-      if(rv$demType == 'sex'){
+      else if(rv$demType == 'sex'){
         
       }
       
-      if(rv$demType == 'race'){
+      else if(rv$demType == 'race'){
         
       }
       
