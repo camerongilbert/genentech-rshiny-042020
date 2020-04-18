@@ -76,7 +76,13 @@ ui <- fluidPage(
 server <- function(input, output) {
   
   rv <- reactiveValues(armToPlot = "all",
-                       armOrOverall = "Overall")
+                       armOrOverall = "Overall",
+                       demType = NULL)
+  armLabeler = as_labeller(c("ARM A" = "Drug X", 
+                           "ARM B" = "Placebo",
+                           "ARM C" = "Combination"))
+
+  observeEvent(input$goDemo, { rv$demType <- input$demType })
   
   ## Demographic summary
   
@@ -89,16 +95,65 @@ server <- function(input, output) {
                    choices = c("Overall", "By Arm"), selected = "Overall")
     }
   })
+  
   observeEvent(input$armOrOverall, {rv$armOrOverall <- input$armOrOverall})
+  
+  
+  #choosing to do an overall plot by arm will trigger the use of facet plots
   
   
   demPlotInput <- eventReactive(
     input$goDemo, {
+      armLabel <- switch(rv$armToPlot,
+                         "all" = "(All participants)",
+                         "ARM A" = "(Received Drug X)",
+                         "ARM B" = "(Received placebo)",
+                         "ARM C" = "(Received combination)")
+      
+      if(armLabel == "(All participants)") {plotPatient <- patient} else {
+        plotPatient <- patient[patient$arm == rv$armToPlot,]
+      }
+      if(rv$demType == 'age'){
+        
+        if(rv$armOrOverall == "Overall") {
+          p <- ggplot(plotPatient, aes(x = age)) + xlim(10,80) + 
+            geom_histogram(binwidth = 5, color = "black", fill = "orange") +
+          labs(title = paste0("Participant age ", armLabel), 
+                              x = "Participant age", y = 'Number of individuals')
+        } else {
+          p <- ggplot(plotPatient, aes(x = age)) + xlim(10,80) +
+            geom_histogram(binwidth = 5, color = 'black', fill = 'orange') +
+            facet_grid(arm ~ ., labeller = armLabeler)  + 
+            labs(title = paste0("Participant age by treatment arm"), 
+            x = "Participant age", y = 'Number of individuals')
+        }
+      }
+      
+      if(rv$demType == 'sex'){
+        
+      }
+      
+      if(rv$demType == 'race'){
+        
+      }
       
     }
   )
   
+  output$demSum <- renderPlot({
+    print(demPlotInput())
+  })
   
+  output$downPlot1 <- downloadHandler(
+    filename = function() {
+      paste(rv$demType, "DemographicSummary.png", sep = "_")
+    },
+    content = function(file) {
+      png(file)
+      print(demPlotInput())
+      dev.off()
+    }
+  )
 }
 
 
