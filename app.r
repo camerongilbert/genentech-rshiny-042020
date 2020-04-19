@@ -45,6 +45,8 @@ patient[patient$shortRace == "MULTIPLE",]$shortRace = "Multiple"
 patient[patient$shortRace == "OTHER",]$shortRace = "Other"
 
 
+fullData  <- merge(patient, labVals, by = c("studyId", "userId"))
+
 ui <- fluidPage(
   titlePanel('R Shiny Exercise: Cameron Gilbert'),
   hr(),
@@ -79,7 +81,42 @@ ui <- fluidPage(
     ),
     
     mainPanel(plotOutput('demSum'))
-  )
+  ),
+  
+  hr(),
+  
+  h2("Treatment time series"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      radioButtons("timeType", "Break down in which way?", 
+                   selected = "allArms",
+                   inline = FALSE, width = NULL, 
+                   choiceNames = c("Single test, all arms", "Single arm, all tests"),
+                   choiceValues = c("allArms", "allTests")),
+      uiOutput("armTestSelector"),
+      
+      radioButtons("extraFilters", "Apply additional demographic filters?",
+                   selected = F, inline = F, width = NULL,
+                   choiceNames = c("No", "Yes"), choiceValues = c(F, T)),
+      
+      uiOutput("ageFilter"),
+      uiOutput("sexFilter"),
+      uiOutput("biomarker1Filter"),
+      uiOutput("biomarker2Filter"),
+      
+      
+      
+      actionButton("goTime", label = "Update Time Series"),
+      hr(),
+      downloadButton("downPlot2", label = "Download Plot")
+      
+    ),
+    mainPanel()
+  ),
+  hr()
+  
+  
     
 )
 
@@ -90,7 +127,16 @@ server <- function(input, output) {
   
   rv <- reactiveValues(armToPlot = "awaitingInput",
                        armOrOverall = "Overall",
-                       demType = NULL)
+                       demType = NULL,
+                       timeType = "allArms",
+                       armTestButtons = NULL,
+                       extraFilters = F,
+                       minmaxAge = c(10, 80),
+                       sexToPlot = c("M", "F", "U"),
+                       bio1ToPlot = c(0,25),
+                       bio2ToPlot = c("HIGH", "MEDIUM", "LOW"))
+  
+  
   armLabeler = as_labeller(c("ARM A" = "Drug X", 
                            "ARM B" = "Placebo",
                            "ARM C" = "Combination"))
@@ -295,7 +341,7 @@ server <- function(input, output) {
       }
     }
   )
-  #test
+  
   output$demSum <- renderPlot({
     print(demPlotInput())
   })
@@ -310,6 +356,86 @@ server <- function(input, output) {
       dev.off()
     }
   )
+  
+  
+  
+  ###########Time Series (Server) ##############
+  
+  
+  observeEvent(input$timeType, {rv$timeType <- input$timeType})
+  
+  
+  output$armTestSelector <- renderUI({
+    if(rv$timeType == "allArms") {
+      radioButtons("armTestButtons", "Select which test results to visualize",
+                   choiceNames = unique(labVals$test), choiceValues = unique(labVals$testShort),
+                   selected = unique(labVals$testShort)[1])
+    } else if(rv$timeType == "allTests"){
+      radioButtons("armTestButtons", "Select which treatment arm to visualize",
+                   choiceNames = c("Drug X", "Placebo", "Combination"),
+                   choiceValues = c("ARM A", "ARM B", "ARM C"),
+                   selected = "ARM A")
+    }
+  })
+  
+  observeEvent(input$armTestButtons, {rv$armTestButtons <- input$armTestButtons})
+  
+  observeEvent(input$extraFilters, {
+    rv$extraFilters <- input$extraFilters})
+  
+  output$ageFilter <- renderUI({
+    if(rv$extraFilters){
+      sliderInput("minmaxAge", "Choose age range",
+                  min = 10, max = 80, value = c(10,80))
+    }
+  })
+  
+  observeEvent(input$minmaxAge, {rv$minmaxAge <- input$minmaxAge} )
+  output$sexFilter <- renderUI({
+    if(rv$extraFilters){
+      checkboxGroupInput("sexToPlot", "Choose which patients to include",
+                   choiceNames = c("Male", "Female", "Undifferentiated"), 
+                   choiceValues = c("M", "F", "U"),
+                   selected = c("M", "F", "U"))
+    }
+  })
+  observeEvent(input$sexToPlot, {rv$sexToPlot <- input$sexToPlot} )
+  
+  output$biomarker1Filter <- renderUI({
+    if(rv$extraFilters){
+      sliderInput("bio1ToPlot", "Choose range for Biomarker 1 (constant across all timepoints)",
+                  min = 0, max = 25, value = c(0,25))
+    }
+  })
+  
+  observeEvent(input$bio1ToPlot, {rv$bio1ToPlot <- input$bio1ToPlot} )
+  
+  
+  output$biomarker2Filter <- renderUI({
+    if(rv$extraFilters){
+      checkboxGroupInput("bio2ToPlot", "Choose values for Biomarker 2 (constant across all timepoints)",
+                         choiceNames = c("High", "Medium", "Low"), 
+                         choiceValues = c("HIGH", "MEDIUM", "LOW"),
+                         selected = c("HIGH", "MEDIUM", "LOW"))
+    }
+  })
+  observeEvent(input$bio2ToPlot, {rv$bio2ToPlot <- input$bio2ToPlot} )
+  
+  observeEvent(input$goTime, {
+    
+    toPlotData <- fullData
+
+    if(rv$extraFilters){
+      toPlotData <- toPlotData[toPlotData$sex  %in% rv$sexToPlot,]
+      toPlotData <- toPlotData[toPlotData$age >= rv$minmaxAge[1],]
+      toPlotData <- toPlotData[toPlotData$age <= rv$minmaxAge[2],]
+      toPlotData <- toPlotData[toPlotData$bio1 >= rv$bio1ToPlot[1],]
+      toPlotData <- toPlotData[toPlotData$bio1 <= rv$bio1ToPlot[2],]
+      toPlotData <- toPlotData[toPlotData$bio2 %in% rv$bio2ToPlot,]
+
+    }
+    print(dim(toPlotData))
+  })
 }
 
 
