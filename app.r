@@ -295,7 +295,7 @@ server <- function(input, output) {
       }
     }
   )
-  
+  #test
   output$demSum <- renderPlot({
     print(demPlotInput())
   })
