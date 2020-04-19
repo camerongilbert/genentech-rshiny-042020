@@ -28,9 +28,22 @@ colnames(labVals) <- c("studyId",
                        "value",
                        "unit",
                        "visit")
+patient[!patient$sex %in% c("M", "F"),]$sex <- "U"
 
 demoPlots <- c("age", "race", "sex", "sexAge", "sexRace", "ageRace")
 names(demoPlots) <- c("Age", "Race", "Sex", "Age by Sex", "Race by Sex", "Age by Race")
+
+patient$shortRace <- patient$race
+patient[patient$shortRace == "NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER",]$shortRace  <-
+  "Native Hawaiian/\nPacific Islander"
+patient[patient$shortRace == "AMERICAN INDIAN OR ALASKA NATIVE",]$shortRace <-
+  "Am. Indian/\n AK Native"
+patient[patient$shortRace == "WHITE",]$shortRace = "White"
+patient[patient$shortRace == "BLACK OR AFRICAN AMERICAN",]$shortRace = "Black/AfAm"
+patient[patient$shortRace == "ASIAN",]$shortRace = "Asian"
+patient[patient$shortRace == "MULTIPLE",]$shortRace = "Multiple"
+patient[patient$shortRace == "OTHER",]$shortRace = "Other"
+
 
 ui <- fluidPage(
   titlePanel('R Shiny Exercise: Cameron Gilbert'),
@@ -118,13 +131,13 @@ server <- function(input, output) {
       if(rv$demType == 'age'){
         if(rv$armToPlot == "all"){
           if(rv$armOrOverall == "Overall") {
-            p <- ggplot(plotPatient, aes(x = age)) + xlim(10,80) + 
+            p <- ggplot(plotPatient, aes(x = age)) + 
               geom_histogram(binwidth = 5, color = "black", fill = "orange") +
             labs(title = paste0("Participant age ", armLabel), 
                                 x = "Participant age", y = 'Number of individuals')
             p
           } else {
-            p <- ggplot(plotPatient, aes(x = age)) + xlim(10,80) +
+            p <- ggplot(plotPatient, aes(x = age)) +
               geom_histogram(binwidth = 5, color = 'black', fill = 'orange') +
               facet_grid(arm ~ ., labeller = armLabeler)  + 
               labs(title = paste0("Participant age by treatment arm"), 
@@ -132,7 +145,7 @@ server <- function(input, output) {
             p
           }
         } else {
-          p <- ggplot(plotPatient, aes(x = age)) + xlim(10,80) + 
+          p <- ggplot(plotPatient, aes(x = age)) + 
             geom_histogram(binwidth = 5, color = "black", fill = "orange") +
             labs(title = paste0("Participant age ", armLabel), 
                  x = "Participant age", y = 'Number of individuals')
@@ -140,14 +153,146 @@ server <- function(input, output) {
         }
       }
       
-      else if(rv$demType == 'sex'){
+      else if(rv$demType == 'sexAge'){
+        if(rv$armToPlot == "all"){
+          
+          if(rv$armOrOverall == "Overall") {
+            
+            p <- ggplot(plotPatient, aes(x = age, fill = sex)) +
+              geom_histogram(position = "dodge", binwidth = 5, alpha= 1) +
+              labs(title = paste0("Participant age ", armLabel, ", grouped by sex"), 
+                   x = "Participant age", y = 'Number of individuals')
+            p
+          } else {
+            p <- ggplot(plotPatient, aes(x = age, fill = sex)) +
+              geom_histogram(binwidth = 5, alpha = 1, position = "dodge") +
+              facet_grid(arm ~ ., labeller = armLabeler)  + 
+              labs(title = paste0("Participant age by treatment arm, grouped by sex"), 
+                   x = "Participant age", y = 'Number of individuals')
+            p
+          }
+        } else {
+            p <- ggplot(plotPatient, aes(x = age, fill = sex)) + 
+              geom_histogram(binwidth = 5, position = "dodge", alpha =1) +
+              labs(title = paste0("Participant age ", armLabel, ", grouped by sex"), 
+                   x = "Participant age", y = 'Number of individuals')
+            p
+        }
+      }
+      
+      else if(rv$demType == 'ageRace'){
+        if(rv$armToPlot == "all"){
+          
+          if(rv$armOrOverall == "Overall"){
+            
+            p <- ggplot(plotPatient, aes(x = shortRace, y = age, fill = shortRace)) +
+              geom_boxplot(position = "dodge")+
+              theme(legend.position = "none") +
+              labs(title = paste0("Participant age distribution by race ", armLabel), 
+                   x = "", y = 'Participant age')
+            p
+          } else {
+            p <- ggplot(plotPatient, aes(x = shortRace, y = age, fill = shortRace)) +
+              geom_boxplot(position = "dodge")+
+              theme(legend.position = "none") +
+              labs(title = paste0("Participant age distribution by race ", armLabel), 
+                   x = "", y = 'Participant age') + 
+              facet_grid(arm~., labeller = armLabeler)
+            p
+          }
+        } else {
+          
+          p <- ggplot(plotPatient, aes(x = shortRace, y = age, fill = shortRace)) +
+            geom_boxplot(position = "dodge") +
+            theme(legend.position = "none") +
+            labs(title = paste0("Participant age distribution by race ", armLabel), 
+                 x = "", y = 'Participant age')
+          p
+        }
         
       }
       
-      else if(rv$demType == 'race'){
+      else if(rv$demType == "sex"){
         
-      }
+        if(rv$armToPlot == "all") {
+          
+          if(rv$armOrOverall == "Overall"){
+            p <- ggplot(plotPatient, aes(x= sex, fill = sex))+geom_bar() + 
+              labs(x="", y = "Number of participants",
+                   title = paste0("Sex breakdown of study participants ", armLabel))+
+              theme(legend.position = "none")
+            p
+          } else {
+            p <- ggplot(plotPatient, aes(x= sex, fill = sex))+geom_bar() + 
+              labs(x="", y = "Number of participants",
+                   title = paste0("Sex breakdown of study participants ", armLabel))+
+              theme(legend.position = "none") + 
+              facet_grid(arm~., labeller = armLabeler)
+            p
+          }
+          
+        } else {
+          p <- ggplot(plotPatient, aes(x= sex, fill = sex))+geom_bar() + 
+            labs(x="", y = "Number of participants",
+                 title = paste0("Sex breakdown of study participants ", armLabel))+
+            theme(legend.position = "none")
+          p
+          
+        } 
       
+      }
+      else if(rv$demType == "race") {
+        if(rv$armToPlot == "all") {
+         if(rv$armOrOverall == "Overall") {
+           p <- ggplot(plotPatient, aes(x= shortRace, fill = shortRace))+geom_bar() + 
+             labs(x="", y = "Number of participants",
+                  title = paste0("Racial breakdown of study participants ", armLabel))+
+             theme(legend.position = "none")
+           p
+           
+         } else {
+           p <- ggplot(plotPatient, aes(x= shortRace, fill = shortRace))+geom_bar() + 
+             labs(x="", y = "Number of participants",
+                  title = paste0("Racial breakdown of study participants ", armLabel))+
+             theme(legend.position = "none") + 
+             facet_grid(arm~., labeller = armLabeler)
+           p
+         }
+        } else {
+          p <- ggplot(plotPatient, aes(x= shortRace, fill = shortRace))+geom_bar() + 
+            labs(x="", y = "Number of participants",
+                 title = paste0("Racial breakdown of study participants ", armLabel))+
+            theme(legend.position = "none")
+          p
+          
+        }
+      } else if (rv$demType == "sexRace"){
+        if(rv$armToPlot == "all") {
+          if(rv$armOrOverall == "Overall"){
+            p <- ggplot(plotPatient, aes(x= shortRace, fill = sex)) +
+              geom_bar(position = "dodge") + 
+              labs(x = '', y = "Number of participants",
+                   title = paste0("Racial breakdown of study participants, split by sex ", armLabel))
+  
+            p
+          } else {
+            p <- ggplot(plotPatient, aes(x= shortRace, fill = sex)) +
+              geom_bar(position = "dodge") + 
+              labs(x = '', y = "Number of participants",
+                  title = paste0("Racial breakdown of study participants, split by sex ", armLabel)) +
+              facet_grid(arm~., labeller = armLabeler)
+          
+            p
+          }
+        } else {
+          p <- ggplot(plotPatient, aes(x= shortRace, fill = sex)) +
+            geom_bar(position = "dodge") + 
+            labs(x = '', y = "Number of participants",
+                 title = paste0("Racial breakdown of study participants, split by sex ", armLabel))
+          
+          p
+        }
+      }
     }
   )
   
