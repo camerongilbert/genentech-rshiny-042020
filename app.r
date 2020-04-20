@@ -2,7 +2,10 @@ library(shiny)
 library(ggplot2)
 library(reshape2)
 
-#exploration
+#Data are read in from the provided TSV files. The column names
+#are then adjusted to make for more readable code.
+
+
 
 
 patient <- read.table("Random_PatientLevelInfo_2020.tsv",
@@ -28,10 +31,15 @@ colnames(labVals) <- c("studyId",
                        "value",
                        "unit",
                        "visit")
+
+#More adjustments to the contents of the file in order to facilitate readable
+#plots later on. Long words are shortened, line breaks are added using 
+#newline characters, and allcaps words are reduced to normal capitalization.
+#In particular, the "race" column is shortened into a "shortRace" column
+#containing abbreviations.
+
 patient[!patient$sex %in% c("M", "F"),]$sex <- "U"
 
-demoPlots <- c("age", "race", "sex", "sexAge", "sexRace", "ageRace")
-names(demoPlots) <- c("Age", "Race", "Sex", "Age by Sex", "Race by Sex", "Age by Race")
 
 patient$shortRace <- patient$race
 patient[patient$shortRace == "NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER",]$shortRace  <-
@@ -45,6 +53,9 @@ patient[patient$shortRace == "MULTIPLE",]$shortRace = "Multiple"
 patient[patient$shortRace == "OTHER",]$shortRace = "Other"
 
 
+#data are merged on studyId and userId after confirming outside of the
+#shiny app that patients are unique.
+
 fullData  <- merge(patient, labVals, by = c("studyId", "userId"))
 
 fullData[fullData$visit == "SCREENING",]$visit <- "Screening"
@@ -54,12 +65,19 @@ fullData$visit <- gsub("DAY", "Day", fullData$visit)
 fullData$visitFactor <- gsub(" Day", "\nDay", fullData$visit)
 
 
+#Rather than turning the visit into a numeric, encoding it as a leveled factor.
 
 fullData$visitFactor <- factor(fullData$visitFactor,
                                  levels = c("Screening", "Baseline",
                                             "Week 1\nDay 8", "Week 2\nDay 15",
                                             "Week 3\nDay 22", "Week 4\nDay 29",
                                             "Week 5\nDay 36"))
+
+#label for use with the demographic plot.
+
+demoPlots <- c("age", "race", "sex", "sexAge", "sexRace", "ageRace")
+names(demoPlots) <- c("Age", "Race", "Sex", "Age by Sex", "Race by Sex", "Age by Race")
+
 
 ui <- fluidPage(
   titlePanel('R Shiny Exercise: Cameron Gilbert'),
@@ -74,13 +92,22 @@ ui <- fluidPage(
   h2('Demographic summary'),
   
   sidebarLayout(
+    
+    #Users can choose which study arm to look at, or at all of them.
+    
     sidebarPanel(radioButtons("demArm", "Which arm to examine?", 
                               selected = "All",
                               inline = FALSE, width = NULL, 
                               choiceNames = c("All", "Drug X", "Placebo", "Combination"),
                               choiceValues = c("all", "ARM A", "ARM B", "ARM C")),
                  
+                 #That choice gives the user a subsequent choice - whether
+                 #to visualize each arm separately, or pool them together.
+                 
                  uiOutput("demArmOrOverall"),
+                 
+                 #The earlier list of demographic plots is provided
+                 #here for the user to choose from.
                  
                  selectInput("demType",
                              label = "Choose a plot to examine",
@@ -89,9 +116,13 @@ ui <- fluidPage(
                              multiple = F
                  ),
                  
+                 #Action buttons to trigger the plot to update and to download.
+                 
                  actionButton("goDemo", label = "Update Demographics"),
                  hr(),
-                 downloadButton("downPlot1", label = "Download Plot")
+                 downloadButton("downPlot1", label = "Download Plot"),
+                 downloadButton("downDemoData", label = "Download Demographic Data")
+                 
     ),
     
     mainPanel(plotOutput('demSum'))
@@ -99,20 +130,36 @@ ui <- fluidPage(
   
   hr(),
   
+  #Second visualization - time series 
+  
   h2("Treatment time series"),
   
   sidebarLayout(
     sidebarPanel(
+      
+      #User can first choose whether to see all the arms, or all the tests,
+      #on the same plot.
+      
       radioButtons("timeType", "Break down in which way?", 
                    selected = "allArms",
                    inline = FALSE, width = NULL, 
                    choiceNames = c("Single test, all arms", "Single arm, all tests"),
                    choiceValues = c("allArms", "allTests")),
+      
+      #Based on that choice, the user can select which arm or which test
+      #to examine.
+      
       uiOutput("armTestSelector"),
+      
+      #The user is given the option to apply additional filters
+      #based on demographics or biomarkers.
       
       radioButtons("extraFilters", "Apply additional demographic filters?",
                    selected = F, inline = F, width = NULL,
                    choiceNames = c("No", "Yes"), choiceValues = c(F, T)),
+      
+      
+      #The user may filter by age, sex, or the two biomarkers.
       
       uiOutput("ageFilter"),
       uiOutput("sexFilter"),
@@ -120,11 +167,12 @@ ui <- fluidPage(
       uiOutput("biomarker2Filter"),
       
       
+      #Action buttons to allow the user to update the plot,
+      #download the plot, or download the data respectively. 
       
       actionButton("goTime", label = "Update Time Series"),
       hr(),
       downloadButton("downPlot2", label = "Download Plot"),
-      hr(),
       downloadButton("downTimeData", label = "Download Underlying Dataset")
       
       
@@ -142,6 +190,8 @@ ui <- fluidPage(
 
 server <- function(input, output) {
   
+  #User inputs stored as reactive values.
+  
   rv <- reactiveValues(armToPlot = "awaitingInput",
                        armOrOverall = "Overall",
                        demType = NULL,
@@ -153,17 +203,28 @@ server <- function(input, output) {
                        bio1ToPlot = c(0,25),
                        bio2ToPlot = c("HIGH", "MEDIUM", "LOW"))
   
+  #Facet grid labels used to ensure the viewer knows what each treatment arm
+  #actually represents.
+  
   
   armLabeler = as_labeller(c("ARM A" = "Drug X", 
                            "ARM B" = "Placebo",
                            "ARM C" = "Combination"))
+  
+  ###########Demographic summary (server)##########
+    
+  #on button push, the app stores which type of demographic plot the user wants.
 
   observeEvent(input$goDemo, { rv$demType <- input$demType })
+
   
-  ## Demographic summary
-  
+  #When an arm is selected, it is stored in the app.
   
   observeEvent(input$demArm, { rv$armToPlot <- input$demArm })
+  
+  #If the user chooses to plot all treatment arms, the user is given a new
+  #prompt (not displayed otherwise) to choose whether to pool all arms
+  #for an overall plot, or break down results by arm.
   
   output$demArmOrOverall <- renderUI({
     if(rv$armToPlot == "all"){
@@ -172,30 +233,46 @@ server <- function(input, output) {
     }
   })
   
+  #The choice made here is stored.
+  
   observeEvent(input$armOrOverall, {rv$armOrOverall <- input$armOrOverall})
   
   
-  #choosing to do an overall plot by arm will trigger the use of facet plots
-  
+  #Plot is generated in a large eventReactive loop.
   
   demPlotInput <- eventReactive(
     input$goDemo, {
+      
+      #Label created based on which arm is used.
+      
       armLabel <- switch(rv$armToPlot,
                          "all" = "(All participants)",
                          "ARM A" = "(Received Drug X)",
                          "ARM B" = "(Received placebo)",
                          "ARM C" = "(Received combination)")
       
+      #Data are then filtered.
+      
       if(rv$armToPlot == "all") {
         plotPatient <- patient
         } else {
         plotPatient <- patient[patient$arm == rv$armToPlot,]
-      }
+        }
+      
+      
+      #Separate logic is used for each type of demographic plot,
+      #which is formatted as either a histogram, a bar plot, or a boxplot.
+      
+      #In each case, the logic further splits based on the user's other choices.
+      #The same pattern of if() statements is used for each type of plot.
+      
       if(rv$demType == 'age'){
         if(rv$armToPlot == "all"){
           if(rv$armOrOverall == "Overall") {
             p <- ggplot(plotPatient, aes(x = age)) + 
               geom_histogram(binwidth = 5, color = "black", fill = "orange") +
+              theme(text = element_text(size = rel(5)), 
+                    plot.title = element_text(size = rel(4))) +
             labs(title = paste0("Participant age ", armLabel), 
                                 x = "Participant age", y = 'Number of individuals')
             p
@@ -204,14 +281,18 @@ server <- function(input, output) {
               geom_histogram(binwidth = 5, color = 'black', fill = 'orange') +
               facet_grid(arm ~ ., labeller = armLabeler)  + 
               labs(title = paste0("Participant age by treatment arm"), 
-              x = "Participant age", y = 'Number of individuals')
+              x = "Participant age", y = 'Number of individuals') +
+              theme(text = element_text(size = rel(5)), 
+                    plot.title = element_text(size = rel(4)))
             p
           }
         } else {
           p <- ggplot(plotPatient, aes(x = age)) + 
             geom_histogram(binwidth = 5, color = "black", fill = "orange") +
             labs(title = paste0("Participant age ", armLabel), 
-                 x = "Participant age", y = 'Number of individuals')
+                 x = "Participant age", y = 'Number of individuals') +
+            theme(text = element_text(size = rel(5)), 
+                  plot.title = element_text(size = rel(4)))
           p
         }
       }
@@ -224,21 +305,30 @@ server <- function(input, output) {
             p <- ggplot(plotPatient, aes(x = age, fill = sex)) +
               geom_histogram(position = "dodge", binwidth = 5, alpha= 1) +
               labs(title = paste0("Participant age ", armLabel, ", grouped by sex"), 
-                   x = "Participant age", y = 'Number of individuals')
+                   x = "Participant age", y = 'Number of individuals') +
+              theme(text = element_text(size = rel(5)), 
+                    plot.title = element_text(size = rel(4)),
+                    legend.text = element_text(size = rel(5)))
             p
           } else {
             p <- ggplot(plotPatient, aes(x = age, fill = sex)) +
               geom_histogram(binwidth = 5, alpha = 1, position = "dodge") +
               facet_grid(arm ~ ., labeller = armLabeler)  + 
               labs(title = paste0("Participant age by treatment arm, grouped by sex"), 
-                   x = "Participant age", y = 'Number of individuals')
+                   x = "Participant age", y = 'Number of individuals') +
+              theme(text = element_text(size = rel(5)), 
+                    plot.title = element_text(size = rel(4)),
+                    legend.text = element_text(size = rel(5)))
             p
           }
         } else {
             p <- ggplot(plotPatient, aes(x = age, fill = sex)) + 
               geom_histogram(binwidth = 5, position = "dodge", alpha =1) +
               labs(title = paste0("Participant age ", armLabel, ", grouped by sex"), 
-                   x = "Participant age", y = 'Number of individuals')
+                   x = "Participant age", y = 'Number of individuals') +
+              theme(text = element_text(size = rel(5)), 
+                    plot.title = element_text(size = rel(4)),
+                    legend.text = element_text(size = rel(5)))
             p
         }
       }
@@ -250,14 +340,16 @@ server <- function(input, output) {
             
             p <- ggplot(plotPatient, aes(x = shortRace, y = age, fill = shortRace)) +
               geom_boxplot(position = "dodge")+
-              theme(legend.position = "none") +
+              theme(legend.position = "none", text = element_text(size = rel(5)), 
+                    plot.title = element_text(size = rel(4))) +
               labs(title = paste0("Participant age distribution by race ", armLabel), 
                    x = "", y = 'Participant age')
             p
           } else {
             p <- ggplot(plotPatient, aes(x = shortRace, y = age, fill = shortRace)) +
               geom_boxplot(position = "dodge")+
-              theme(legend.position = "none") +
+              theme(legend.position = "none", text = element_text(size = rel(5)), 
+                    plot.title = element_text(size = rel(4))) +
               labs(title = paste0("Participant age distribution by race ", armLabel), 
                    x = "", y = 'Participant age') + 
               facet_grid(arm~., labeller = armLabeler)
@@ -267,7 +359,8 @@ server <- function(input, output) {
           
           p <- ggplot(plotPatient, aes(x = shortRace, y = age, fill = shortRace)) +
             geom_boxplot(position = "dodge") +
-            theme(legend.position = "none") +
+            theme(legend.position = "none", text = element_text(size = rel(5)), 
+                  plot.title = element_text(size = rel(4))) +
             labs(title = paste0("Participant age distribution by race ", armLabel), 
                  x = "", y = 'Participant age')
           p
@@ -283,13 +376,15 @@ server <- function(input, output) {
             p <- ggplot(plotPatient, aes(x= sex, fill = sex))+geom_bar() + 
               labs(x="", y = "Number of participants",
                    title = paste0("Sex breakdown of study participants ", armLabel))+
-              theme(legend.position = "none")
+              theme(legend.position = "none", text = element_text(size = rel(5)), 
+                    plot.title = element_text(size = rel(4)))
             p
           } else {
             p <- ggplot(plotPatient, aes(x= sex, fill = sex))+geom_bar() + 
               labs(x="", y = "Number of participants",
                    title = paste0("Sex breakdown of study participants ", armLabel))+
-              theme(legend.position = "none") + 
+              theme(legend.position = "none", text = element_text(size = rel(5)), 
+                    plot.title = element_text(size = rel(4))) + 
               facet_grid(arm~., labeller = armLabeler)
             p
           }
@@ -298,7 +393,8 @@ server <- function(input, output) {
           p <- ggplot(plotPatient, aes(x= sex, fill = sex))+geom_bar() + 
             labs(x="", y = "Number of participants",
                  title = paste0("Sex breakdown of study participants ", armLabel))+
-            theme(legend.position = "none")
+            theme(legend.position = "none", text = element_text(size = rel(5)), 
+                  plot.title = element_text(size = rel(4)))
           p
           
         } 
@@ -310,14 +406,16 @@ server <- function(input, output) {
            p <- ggplot(plotPatient, aes(x= shortRace, fill = shortRace))+geom_bar() + 
              labs(x="", y = "Number of participants",
                   title = paste0("Racial breakdown of study participants ", armLabel))+
-             theme(legend.position = "none")
+             theme(legend.position = "none", text = element_text(size = rel(5)), 
+                   plot.title = element_text(size = rel(4)))
            p
            
          } else {
            p <- ggplot(plotPatient, aes(x= shortRace, fill = shortRace))+geom_bar() + 
              labs(x="", y = "Number of participants",
                   title = paste0("Racial breakdown of study participants ", armLabel))+
-             theme(legend.position = "none") + 
+             theme(legend.position = "none", text = element_text(size = rel(5)), 
+                   plot.title = element_text(size = rel(4))) +
              facet_grid(arm~., labeller = armLabeler)
            p
          }
@@ -325,7 +423,8 @@ server <- function(input, output) {
           p <- ggplot(plotPatient, aes(x= shortRace, fill = shortRace))+geom_bar() + 
             labs(x="", y = "Number of participants",
                  title = paste0("Racial breakdown of study participants ", armLabel))+
-            theme(legend.position = "none")
+            theme(legend.position = "none", text = element_text(size = rel(5)), 
+                  plot.title = element_text(size = rel(4)))
           p
           
         }
@@ -334,6 +433,9 @@ server <- function(input, output) {
           if(rv$armOrOverall == "Overall"){
             p <- ggplot(plotPatient, aes(x= shortRace, fill = sex)) +
               geom_bar(position = "dodge") + 
+              theme(text = element_text(size = rel(5)), 
+                     plot.title = element_text(size = rel(4)),
+                    legend.text = element_text(size = rel(5))) +
               labs(x = '', y = "Number of participants",
                    title = paste0("Racial breakdown of study participants, split by sex ", armLabel))
   
@@ -343,13 +445,20 @@ server <- function(input, output) {
               geom_bar(position = "dodge") + 
               labs(x = '', y = "Number of participants",
                   title = paste0("Racial breakdown of study participants, split by sex ", armLabel)) +
-              facet_grid(arm~., labeller = armLabeler)
+              facet_grid(arm~., labeller = armLabeler) +
+              theme(text = element_text(size = rel(5)), 
+                    plot.title = element_text(size = rel(4)),
+                    legend.text = element_text(size = rel(5)))
+              
           
             p
           }
         } else {
           p <- ggplot(plotPatient, aes(x= shortRace, fill = sex)) +
             geom_bar(position = "dodge") + 
+            theme(text = element_text(size = rel(5)), 
+                  plot.title = element_text(size = rel(4)),
+                  legend.text = element_text(size = rel(5))) +
             labs(x = '', y = "Number of participants",
                  title = paste0("Racial breakdown of study participants, split by sex ", armLabel))
           
@@ -359,9 +468,13 @@ server <- function(input, output) {
     }
   )
   
+  #Plot is displayed using a renderPlot({})
+  
   output$demSum <- renderPlot({
     print(demPlotInput())
   })
+  
+  #User is given the ability to download the plot.
   
   output$downPlot1 <- downloadHandler(
     filename = function() {
@@ -374,6 +487,14 @@ server <- function(input, output) {
     }
   )
   
+  output$downDemoData <- downloadHandler(
+    filename = function() {
+      paste0("rShinyExercise - filteredDemographicData_", Sys.time(), ".csv")
+    },
+    content = function(file) {
+      write.csv(file = file, plotPatient, row.names = F)
+    }
+  )
   
   
   ###########Time Series (Server) ##############
@@ -564,7 +685,7 @@ server <- function(input, output) {
   
   output$downTimeData <- downloadHandler(
     filename = function() {
-      "rShinyExercise - filteredTimeSeriesData.csv"
+      paste0("rShinyExercise - filteredTimeSeriesData_", Sys.time(), ".csv")
     },
     content = function(file) {
       write.csv(file = file, toPlotData, row.names = F)
