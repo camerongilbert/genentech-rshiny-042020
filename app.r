@@ -47,6 +47,20 @@ patient[patient$shortRace == "OTHER",]$shortRace = "Other"
 
 fullData  <- merge(patient, labVals, by = c("studyId", "userId"))
 
+fullData[fullData$visit == "SCREENING",]$visit <- "Screening"
+fullData[fullData$visit == "BASELINE",]$visit <- "Baseline"
+fullData$visit <- gsub("WEEK", "Week", fullData$visit)
+fullData$visit <- gsub("DAY", "Day", fullData$visit)
+fullData$visitFactor <- gsub(" Day", "\nDay", fullData$visit)
+
+
+
+fullData$visitFactor <- factor(fullData$visitFactor,
+                                 levels = c("Screening", "Baseline",
+                                            "Week 1\nDay 8", "Week 2\nDay 15",
+                                            "Week 3\nDay 22", "Week 4\nDay 29",
+                                            "Week 5\nDay 36"))
+
 ui <- fluidPage(
   titlePanel('R Shiny Exercise: Cameron Gilbert'),
   hr(),
@@ -109,10 +123,13 @@ ui <- fluidPage(
       
       actionButton("goTime", label = "Update Time Series"),
       hr(),
-      downloadButton("downPlot2", label = "Download Plot")
+      downloadButton("downPlot2", label = "Download Plot"),
+      hr(),
+      downloadButton("downTimeData", label = "Download Underlying Dataset")
+      
       
     ),
-    mainPanel()
+    mainPanel(plotOutput('timePlot'))
   ),
   hr()
   
@@ -351,7 +368,7 @@ server <- function(input, output) {
       paste(rv$demType, "DemographicSummary.png", sep = "_")
     },
     content = function(file) {
-      png(file)
+      png(file, width = 1920, height = 1080)
       print(demPlotInput())
       dev.off()
     }
@@ -421,7 +438,7 @@ server <- function(input, output) {
   })
   observeEvent(input$bio2ToPlot, {rv$bio2ToPlot <- input$bio2ToPlot} )
   
-  observeEvent(input$goTime, {
+  timePlotInput <- eventReactive(input$goTime, {
     
     toPlotData <- fullData
 
@@ -432,10 +449,129 @@ server <- function(input, output) {
       toPlotData <- toPlotData[toPlotData$bio1 >= rv$bio1ToPlot[1],]
       toPlotData <- toPlotData[toPlotData$bio1 <= rv$bio1ToPlot[2],]
       toPlotData <- toPlotData[toPlotData$bio2 %in% rv$bio2ToPlot,]
-
+      
+      if(length(rv$sexToPlot) == 3) {
+        sexFilter = "All sexes"
+      } else {
+        sexFilter = paste("Sexes:", paste(rv$sexToPlot, collapse = ", "))
+      }
+      
+      if(rv$minmaxAge[1] == 10 & rv$minmaxAge[2] == 80){
+        ageFilter = "all ages"
+      } else {
+        ageFilter = paste("age between", rv$minmaxAge[1],
+                          "-", rv$minmaxAge[2])
+      }
+      
+      if(rv$bio1ToPlot[1] == 0 & rv$bio1ToPlot[2] == 25) {
+        bio1Filter <- "all values for biomarker 1"
+      } else {
+        bio1Filter <- paste("biomarker 1 between", rv$bio1ToPlot[1],
+                            " - ", rv$bio1ToPlot[2])
+      }
+      
+      if(length(rv$bio2ToPlot) == 3){
+        bio2Filter = "all values for biomarker 2"
+      } else {
+        bio2Filter <- paste("biomarker 2: ", paste(rv$bio2ToPlot, collapse = ", "))
+      }
+      
+      fullFilter <- paste(sexFilter, ageFilter,
+                          bio1Filter, bio2Filter, sep = ", ")
     }
-    print(dim(toPlotData))
+    
+    
+    
+    if(rv$timeType == "allArms"){
+      
+      test <- rv$armTestButtons
+      
+      toPlotData <- toPlotData[toPlotData$testShort == test,]
+      unit <- toPlotData$unit[1]
+      
+      testLabel <- toPlotData$test[1]
+      
+      if(rv$extraFilters == F) {
+        fullFilter <- ""
+      }
+      
+      p <- ggplot(toPlotData, aes(x = visitFactor,
+                                  y = value,
+                                  fill = arm)) +
+        geom_boxplot() + facet_grid(arm~., labeller = armLabeler) +
+        theme(legend.position = "none", text = element_text(size = rel(5)), 
+              plot.title = element_text(size = rel(4))) +
+        labs(x = '', y = paste0("Test result (", unit, ")"),
+             title = paste0(test, " results for all treatment arms\n", fullFilter)
+            ) 
+      
+      
+      p
+    } else if(rv$timeType == "allTests"){
+      
+      
+      arm <- rv$armTestButtons
+      
+      toPlotData <- toPlotData[toPlotData$arm == arm,]
+      
+      armTimeLabel <-   switch(arm,
+                                      "ARM A" = "Drug X",
+                                      "ARM B" = "Placebo",
+                                      "ARM C" = "Combination")
+      
+      if(rv$extraFilters == F) {
+        fullFilter <- ""
+      }
+      timeTitle <- paste0("All test results, ", armTimeLabel, "\n", fullFilter)
+      
+      
+      p <- ggplot(toPlotData, aes(x = visitFactor,
+                                  y = value,
+                                  fill = unit)) +
+        geom_boxplot() + facet_grid(testShort~.) +
+        theme(text = element_text(size = rel(5)), 
+               plot.title = element_text(size = rel(4)),
+              legend.text = element_text(size = rel(5))) +
+        labs(x = '', y = "Test result (see legend for unit)",
+             title = timeTitle
+        )
+      
+      
+      p
+      
+      
+      
+      
+      
+    }
   })
+  
+  output$timePlot <- renderPlot({
+    print(timePlotInput())
+  })
+  
+  
+  output$downPlot2 <- downloadHandler(
+    filename = function() {
+      paste(rv$timeType, "TreatmentTimeSeries", Sys.time(), ".png", sep = "_")
+    },
+    content = function(file) {
+      png(file, width = 1920, height = 1080)
+      print(timePlotInput())
+      dev.off()
+    }
+  )
+  
+  output$downTimeData <- downloadHandler(
+    filename = function() {
+      "rShinyExercise - filteredTimeSeriesData.csv"
+    },
+    content = function(file) {
+      write.csv(file = file, toPlotData, row.names = F)
+    }
+  )
+  
+  
 }
 
 
