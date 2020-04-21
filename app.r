@@ -504,8 +504,16 @@ server <- function(input, output) {
   ###########Time Series (Server) ##############
   
   
+  
+  #Time series plots are bisected as "all arms, one test" or "all tests, one arm"
+  #In order to give the viewer the ability to visualize a contrast on one clean
+  #facet plot.
+  
   observeEvent(input$timeType, {rv$timeType <- input$timeType})
   
+  
+  #Based on which type of plot the user selects, the resultant radio button
+  #selection changes appropriately.
   
   output$armTestSelector <- renderUI({
     if(rv$timeType == "allArms") {
@@ -521,6 +529,12 @@ server <- function(input, output) {
   })
   
   observeEvent(input$armTestButtons, {rv$armTestButtons <- input$armTestButtons})
+  
+  #If the user chooses to apply additional filters, that input 
+  #triggers the panel to add filters for sex, age, and the biomarkers.
+  #The default values are set to include all data. If the user makes 
+  #no selection for a given filter, it will not exclude anything.
+  #The user's selections (or defaults) are saved in a reactive value.
   
   observeEvent(input$extraFilters, {
     rv$extraFilters <- input$extraFilters})
@@ -562,6 +576,14 @@ server <- function(input, output) {
     }
   })
   observeEvent(input$bio2ToPlot, {rv$bio2ToPlot <- input$bio2ToPlot} )
+  
+  #The plot is generated in the same fashion as the demographic plot.
+  #Data are filtered if filters are applied. In order to allow
+  #the user to download the data later, the filtered data
+  #are saved to a reactive value. 
+  #The filter selections are used to create a chart title. 
+  #The specific formatting of the chart depends on the 
+  #selection of tests or arms for contrasting.
   
   timePlotInput <- eventReactive(input$goTime, {
     
@@ -668,9 +690,6 @@ server <- function(input, output) {
       p
       
       
-      
-      
-      
     }
   })
   
@@ -678,6 +697,7 @@ server <- function(input, output) {
     print(timePlotInput())
   })
   
+  #Plot and data are made available to download.
   
   output$downPlot2 <- downloadHandler(
     filename = function() {
