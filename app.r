@@ -195,13 +195,15 @@ server <- function(input, output) {
   rv <- reactiveValues(armToPlot = "awaitingInput",
                        armOrOverall = "Overall",
                        demType = NULL,
+                       plotPatient = NULL,
                        timeType = "allArms",
                        armTestButtons = NULL,
                        extraFilters = F,
                        minmaxAge = c(10, 80),
                        sexToPlot = c("M", "F", "U"),
                        bio1ToPlot = c(0,25),
-                       bio2ToPlot = c("HIGH", "MEDIUM", "LOW"))
+                       bio2ToPlot = c("HIGH", "MEDIUM", "LOW"),
+                       toPlotData = NULL)
   
   #Facet grid labels used to ensure the viewer knows what each treatment arm
   #actually represents.
@@ -259,6 +261,7 @@ server <- function(input, output) {
         plotPatient <- patient[patient$arm == rv$armToPlot,]
         }
       
+      rv$plotPatient <- plotPatient
       
       #Separate logic is used for each type of demographic plot,
       #which is formatted as either a histogram, a bar plot, or a boxplot.
@@ -465,6 +468,7 @@ server <- function(input, output) {
           p
         }
       }
+      
     }
   )
   
@@ -492,7 +496,7 @@ server <- function(input, output) {
       paste0("rShinyExercise - filteredDemographicData_", Sys.time(), ".csv")
     },
     content = function(file) {
-      write.csv(file = file, plotPatient, row.names = F)
+      write.csv(file = file, rv$plotPatient, row.names = F)
     }
   )
   
@@ -608,6 +612,8 @@ server <- function(input, output) {
       test <- rv$armTestButtons
       
       toPlotData <- toPlotData[toPlotData$testShort == test,]
+      rv$toPlotData <- toPlotData
+      
       unit <- toPlotData$unit[1]
       
       testLabel <- toPlotData$test[1]
@@ -634,6 +640,7 @@ server <- function(input, output) {
       arm <- rv$armTestButtons
       
       toPlotData <- toPlotData[toPlotData$arm == arm,]
+      rv$toPlotData <- toPlotData
       
       armTimeLabel <-   switch(arm,
                                       "ARM A" = "Drug X",
@@ -688,7 +695,7 @@ server <- function(input, output) {
       paste0("rShinyExercise - filteredTimeSeriesData_", Sys.time(), ".csv")
     },
     content = function(file) {
-      write.csv(file = file, toPlotData, row.names = F)
+      write.csv(file = file, rv$toPlotData, row.names = F)
     }
   )
   
